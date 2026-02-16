@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: processor-service
+  namespace: bank-processing
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: processor-service
+  template:
+    metadata:
+      labels:
+        app: processor-service
+    spec:
+      serviceAccountName: processor-service
+      containers:
+      - name: processor-service
+        image: <ECR_REPOSITORY_URL>/processor-service:latest
+        ports:
+        - containerPort: 8080
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: SPRING_PROFILES_ACTIVE
+          value: "production"
+        livenessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /actuator/health
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 5
