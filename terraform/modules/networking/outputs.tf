@@ -12,3 +12,8 @@ output "public_subnet_ids" {
   description = "Public subnet IDs"
   value       = aws_subnet.public[*].id
 }
+
+output "lambda_security_group_id" {
+  description = "Lambda Security Group ID"
+  value       = aws_security_group.lambda.id
+}

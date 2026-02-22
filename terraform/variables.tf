@@ -27,3 +27,18 @@ variable "msk_cluster_arn" {
   description = "Existing MSK cluster ARN"
   type        = string
 }
+
+variable "process_enabled" {
+  type    = string
+  default = "true"
+}
+
+variable "allowed_transaction_types" {
+  type    = string
+  default = "PIX,TED,DOC"
+}
+
+variable "allow_negative_amount" {
+  type    = string
+  default = "false"
+}

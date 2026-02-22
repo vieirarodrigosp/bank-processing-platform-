@@ -15,42 +15,77 @@ resource "aws_iam_role" "lambda" {
   })
 }
 
-resource "aws_iam_role_policy" "lambda" {
-  name = "${var.environment}-bank-processing-lambda-policy"
-  role = aws_iam_role.lambda.id
+data "aws_iam_policy_document" "lambda_policy" {
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "s3:GetObject",
-          "s3:GetObjectVersion"
-        ]
-        Resource = "${var.s3_input_bucket_arn}/*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "kafka-cluster:Connect",
-          "kafka-cluster:DescribeCluster",
-          "kafka-cluster:WriteData",
-          "kafka-cluster:DescribeTopic"
-        ]
-        Resource = "*"
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
-        Resource = "arn:aws:logs:*:*:*"
-      }
+  # S3 access
+  statement {
+    sid    = "AllowReadInputBucket"
+    effect = "Allow"
+
+    actions = [
+      "s3:GetObject",
+      "s3:GetObjectVersion"
     ]
-  })
+
+    resources = [
+      "${var.s3_input_bucket_arn}/*"
+    ]
+  }
+
+  # MSK IAM Auth
+  statement {
+    sid    = "AllowMSKAccess"
+    effect = "Allow"
+
+    actions = [
+      "kafka-cluster:Connect",
+      "kafka-cluster:DescribeCluster",
+      "kafka-cluster:DescribeClusterDynamicConfiguration",
+      "kafka-cluster:WriteData",
+      "kafka-cluster:DescribeTopic"
+    ]
+
+    resources = [
+      var.msk_cluster_arn,
+      "${var.msk_cluster_arn}/*"
+    ]
+  }
+
+  # CloudWatch Logs
+  statement {
+    sid    = "AllowLogs"
+    effect = "Allow"
+
+    actions = [
+      "logs:CreateLogGroup",
+      "logs:CreateLogStream",
+      "logs:PutLogEvents"
+    ]
+
+    resources = [
+      "arn:aws:logs:${var.aws_region}:${var.aws_account_id}:*"
+    ]
+  }
+
+  # REQUIRED for Lambda in VPC
+  statement {
+    sid    = "AllowVPCAccess"
+    effect = "Allow"
+
+    actions = [
+      "ec2:CreateNetworkInterface",
+      "ec2:DescribeNetworkInterfaces",
+      "ec2:DeleteNetworkInterface"
+    ]
+
+    resources = ["*"]
+  }
+}
+
+resource "aws_iam_role_policy" "lambda" {
+  name   = "${var.environment}-bank-processing-lambda-policy"
+  role   = aws_iam_role.lambda.id
+  policy = data.aws_iam_policy_document.lambda_policy.json
 }
 
 resource "aws_lambda_function" "dispatcher" {
@@ -58,24 +93,36 @@ resource "aws_lambda_function" "dispatcher" {
   function_name    = "${var.environment}-bank-processing-dispatcher"
   role             = aws_iam_role.lambda.arn
   handler          = "com.bank.processing.dispatcher.LambdaHandler::handleRequest"
-  source_code_hash = fileexists("${path.module}/../../../lambda-dispatcher/build/libs/lambda-dispatcher.jar") ? filebase64sha256("${path.module}/../../../lambda-dispatcher/build/libs/lambda-dispatcher.jar") : ""
   runtime          = "java21"
   timeout          = 60
   memory_size      = 512
+  publish          = true
+
+  source_code_hash = fileexists("${path.module}/../../../lambda-dispatcher/build/libs/lambda-dispatcher.jar")
+    ? filebase64sha256("${path.module}/../../../lambda-dispatcher/build/libs/lambda-dispatcher.jar")
+    : null
+
+  vpc_config {
+    subnet_ids         = var.private_subnet_ids
+    security_group_ids = [var.lambda_security_group_id]
+  }
 
   environment {
     variables = {
       MSK_BOOTSTRAP_SERVERS   = var.msk_bootstrap_servers
+      MSK_CLUSTER_ARN         = var.msk_cluster_arn
       MSK_TOPIC_FILE_UPLOADED = "file.uploaded"
+      ENVIRONMENT             = var.environment
     }
   }
 
   tags = {
     Name = "${var.environment}-bank-processing-dispatcher"
+    Environment = var.environment
   }
 }
 
-resource "aws_lambda_permission" "s3" {
+resource "aws_lambda_permission" "allow_s3" {
   statement_id  = "AllowS3Invoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.dispatcher.function_name

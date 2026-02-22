@@ -34,8 +34,7 @@ module "networking" {
 module "s3" {
   source = "./modules/s3"
 
-  environment           = var.environment
-  lambda_function_arn   = ""
+  environment = var.environment
 }
 
 # DynamoDB Module
@@ -56,8 +55,16 @@ module "parameter_store" {
 module "lambda" {
   source = "./modules/lambda"
 
-  environment            = var.environment
-  msk_bootstrap_servers  = var.msk_bootstrap_servers
+  environment           = var.environment
+
+  aws_account_id        = var.aws_account_id
+  aws_region            = var.aws_region
+
+  msk_cluster_arn       = var.msk_cluster_arn
+  msk_bootstrap_servers = var.msk_bootstrap_servers
+
+  private_subnet_ids       = module.networking.private_subnet_ids
+  lambda_security_group_id = module.networking.lambda_security_group_id
 
   s3_input_bucket_name = module.s3.input_bucket_name
   s3_input_bucket_arn  = module.s3.input_bucket_arn
@@ -67,11 +74,11 @@ module "lambda" {
 module "eks" {
   source = "./modules/eks"
 
-  environment         = var.environment
-  vpc_id              = module.networking.vpc_id
-  private_subnet_ids  = module.networking.private_subnet_ids
+  environment        = var.environment
+  vpc_id             = module.networking.vpc_id
+  private_subnet_ids = module.networking.private_subnet_ids
 
-  msk_cluster_arn     = var.msk_cluster_arn
+  msk_cluster_arn = var.msk_cluster_arn
 
   dynamodb_table_arns = module.dynamodb.table_arns
   s3_bucket_arns      = module.s3.bucket_arns
@@ -81,6 +88,6 @@ module "eks" {
 module "monitoring" {
   source = "./modules/monitoring"
 
-  environment         = var.environment
+  environment          = var.environment
   lambda_function_name = module.lambda.function_name
 }

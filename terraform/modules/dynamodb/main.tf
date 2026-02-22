@@ -8,8 +8,23 @@ resource "aws_dynamodb_table" "processed_files" {
     type = "S"
   }
 
+  server_side_encryption {
+    enabled = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
   tags = {
     Name = "${var.environment}-bank-processing-processed-files"
+    Environment = var.environment
+    Component   = "dynamodb"
   }
 }
 
@@ -23,8 +38,23 @@ resource "aws_dynamodb_table" "processed_transactions" {
     type = "S"
   }
 
+  server_side_encryption {
+    enabled = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
   tags = {
     Name = "${var.environment}-bank-processing-processed-transactions"
+    Environment = var.environment
+    Component   = "dynamodb"
   }
 }
 
@@ -38,7 +68,20 @@ resource "aws_dynamodb_table" "transaction_summary" {
     type = "S"
   }
 
+  stream_enabled   = true
+  stream_view_type = "NEW_AND_OLD_IMAGES"
+
+  server_side_encryption {
+    enabled = true
+  }
+
+  point_in_time_recovery {
+    enabled = true
+  }
+
   tags = {
     Name = "${var.environment}-bank-processing-transaction-summary"
+    Environment = var.environment
+    Component   = "dynamodb"
   }
 }

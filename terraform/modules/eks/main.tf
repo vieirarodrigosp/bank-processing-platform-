@@ -1,3 +1,67 @@
+resource "aws_security_group" "eks_cluster" {
+  name        = "${var.environment}-eks-cluster-sg"
+  description = "EKS cluster security group"
+  vpc_id      = var.vpc_id
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.environment}-eks-cluster-sg"
+    Environment = var.environment
+  }
+}
+
+resource "aws_security_group" "eks_nodes" {
+  name        = "${var.environment}-eks-nodes-sg"
+  description = "EKS worker nodes security group"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description = "Node to node communication"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    self        = true
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name        = "${var.environment}-eks-nodes-sg"
+    Environment = var.environment
+  }
+}
+
+# Nodes -> Cluster
+resource "aws_security_group_rule" "nodes_to_cluster" {
+  type                     = "ingress"
+  from_port                = 443
+  to_port                  = 443
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.eks_cluster.id
+  source_security_group_id = aws_security_group.eks_nodes.id
+}
+
+# Cluster -> Nodes
+resource "aws_security_group_rule" "cluster_to_nodes" {
+  type                     = "ingress"
+  from_port                = 1025
+  to_port                  = 65535
+  protocol                 = "tcp"
+  security_group_id        = aws_security_group.eks_nodes.id
+  source_security_group_id = aws_security_group.eks_cluster.id
+}
+
 resource "aws_iam_role" "eks_cluster" {
   name = "${var.environment}-bank-processing-eks-cluster-role"
 
@@ -16,8 +80,8 @@ resource "aws_iam_role" "eks_cluster" {
 }
 
 resource "aws_iam_role_policy_attachment" "eks_cluster_policy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
   role       = aws_iam_role.eks_cluster.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
 }
 
 resource "aws_eks_cluster" "main" {
@@ -26,8 +90,17 @@ resource "aws_eks_cluster" "main" {
   version  = "1.28"
 
   vpc_config {
-    subnet_ids = var.private_subnet_ids
+    subnet_ids              = var.private_subnet_ids
+    security_group_ids      = [aws_security_group.eks_cluster.id]
+    endpoint_private_access = true
+    endpoint_public_access  = false
   }
+
+  enabled_cluster_log_types = [
+    "api",
+    "audit",
+    "authenticator"
+  ]
 
   depends_on = [
     aws_iam_role_policy_attachment.eks_cluster_policy
@@ -35,7 +108,23 @@ resource "aws_eks_cluster" "main" {
 
   tags = {
     Name = "${var.environment}-bank-processing-eks"
+    Environment = var.environment
   }
+}
+
+resource "aws_eks_addon" "vpc_cni" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "vpc-cni"
+}
+
+resource "aws_eks_addon" "coredns" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "coredns"
+}
+
+resource "aws_eks_addon" "kube_proxy" {
+  cluster_name = aws_eks_cluster.main.name
+  addon_name   = "kube-proxy"
 }
 
 resource "aws_iam_role" "eks_node_group" {
@@ -55,19 +144,19 @@ resource "aws_iam_role" "eks_node_group" {
   })
 }
 
-resource "aws_iam_role_policy_attachment" "eks_worker_node_policy" {
+resource "aws_iam_role_policy_attachment" "worker_node" {
+  role       = aws_iam_role.eks_node_group.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
-  role       = aws_iam_role.eks_node_group.name
 }
 
-resource "aws_iam_role_policy_attachment" "eks_cni_policy" {
+resource "aws_iam_role_policy_attachment" "cni" {
+  role       = aws_iam_role.eks_node_group.name
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
-  role       = aws_iam_role.eks_node_group.name
 }
 
-resource "aws_iam_role_policy_attachment" "eks_container_registry_policy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+resource "aws_iam_role_policy_attachment" "ecr" {
   role       = aws_iam_role.eks_node_group.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
 }
 
 resource "aws_eks_node_group" "main" {
@@ -78,21 +167,36 @@ resource "aws_eks_node_group" "main" {
 
   scaling_config {
     desired_size = 1
-    max_size     = 3
     min_size     = 1
+    max_size     = 2
   }
 
   instance_types = ["t3.medium"]
+  capacity_type  = "ON_DEMAND"
 
   depends_on = [
-    aws_iam_role_policy_attachment.eks_worker_node_policy,
-    aws_iam_role_policy_attachment.eks_cni_policy,
-    aws_iam_role_policy_attachment.eks_container_registry_policy
+    aws_iam_role_policy_attachment.worker_node,
+    aws_iam_role_policy_attachment.cni,
+    aws_iam_role_policy_attachment.ecr
   ]
 
   tags = {
     Name = "${var.environment}-bank-processing-node-group"
+    Environment = var.environment
   }
+}
+
+
+data "tls_certificate" "eks" {
+  url = aws_eks_cluster.main.identity[0].oidc[0].issuer
+}
+
+resource "aws_iam_openid_connect_provider" "eks" {
+  client_id_list  = ["sts.amazonaws.com"]
+  thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
+  url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
+
+  depends_on = [aws_eks_cluster.main]
 }
 
 # IRSA for Processor Service
@@ -110,7 +214,10 @@ resource "aws_iam_role" "processor_service" {
         }
         Condition = {
           StringEquals = {
-            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:bank-processing:processor-service"
+            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" =
+            "system:serviceaccount:bank-processing:processor-service"
+            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" =
+            "sts.amazonaws.com"
           }
         }
       }
@@ -125,6 +232,7 @@ resource "aws_iam_role_policy" "processor_service" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      # S3 INPUT
       {
         Effect = "Allow"
         Action = [
@@ -133,12 +241,36 @@ resource "aws_iam_role_policy" "processor_service" {
         ]
         Resource = "${var.s3_bucket_arns[0]}/*"
       },
+      # S3 REJECTED
       {
         Effect = "Allow"
         Action = [
           "s3:PutObject"
         ]
         Resource = "${var.s3_bucket_arns[1]}/*"
+      },
+      # DynamoDB
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:PutItem",
+          "dynamodb:UpdateItem"
+        ]
+        Resource = var.dynamodb_table_arns
+      },
+      # MSK IAM
+      {
+        Effect = "Allow"
+        Action = [
+          "kafka-cluster:Connect",
+          "kafka-cluster:DescribeCluster",
+          "kafka-cluster:WriteData",
+          "kafka-cluster:DescribeTopic"
+        ]
+        Resource = [
+          var.msk_cluster_arn,
+          "${var.msk_cluster_arn}/*"
+        ]
       }
     ]
   })
@@ -159,7 +291,10 @@ resource "aws_iam_role" "consumer_service" {
         }
         Condition = {
           StringEquals = {
-            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:bank-processing:consumer-service"
+            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" =
+            "system:serviceaccount:bank-processing:consumer-service"
+            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" =
+            "sts.amazonaws.com"
           }
         }
       }
@@ -174,32 +309,40 @@ resource "aws_iam_role_policy" "consumer_service" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
+      # DynamoDB
       {
         Effect = "Allow"
         Action = [
+
           "dynamodb:PutItem",
           "dynamodb:UpdateItem",
           "dynamodb:GetItem"
+
         ]
         Resource = var.dynamodb_table_arns
       },
+
+      # S3 REPORTS
       {
         Effect = "Allow"
         Action = [
           "s3:PutObject"
         ]
         Resource = "${var.s3_bucket_arns[2]}/*"
+      },
+
+      # MSK IAM
+      {
+        Effect = "Allow"
+        Action = [
+          "kafka-cluster:Connect",
+          "kafka-cluster:DescribeCluster"
+        ]
+        Resource = [
+          var.msk_cluster_arn,
+          "${var.msk_cluster_arn}/*"
+        ]
       }
     ]
   })
-}
-
-data "tls_certificate" "eks" {
-  url = aws_eks_cluster.main.identity[0].oidc[0].issuer
-}
-
-resource "aws_iam_openid_connect_provider" "eks" {
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = [data.tls_certificate.eks.certificates[0].sha1_fingerprint]
-  url             = aws_eks_cluster.main.identity[0].oidc[0].issuer
 }

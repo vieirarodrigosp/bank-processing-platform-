@@ -1,25 +1,32 @@
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
+locals {
+  azs = slice(data.aws_availability_zones.available.names, 0, 2)
+}
+
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
   enable_dns_support   = true
+  enable_network_address_usage_metrics = true
 
   tags = {
     Name = "${var.environment}-bank-processing-vpc"
+    Environment = var.environment
   }
-}
-
-data "aws_availability_zones" "available" {
-  state = "available"
 }
 
 resource "aws_subnet" "private" {
   count             = 2
   vpc_id            = aws_vpc.main.id
   cidr_block        = cidrsubnet(var.vpc_cidr, 4, count.index)
-  availability_zone = data.aws_availability_zones.available.names[count.index]
+  availability_zone = local.azs[count.index]
 
   tags = {
     Name = "${var.environment}-bank-processing-private-${count.index + 1}"
+    Environment = var.environment
   }
 }
 
@@ -27,11 +34,12 @@ resource "aws_subnet" "public" {
   count                   = 2
   vpc_id                  = aws_vpc.main.id
   cidr_block              = cidrsubnet(var.vpc_cidr, 4, count.index + 2)
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  availability_zone       = local.azs[count.index]
   map_public_ip_on_launch = true
 
   tags = {
     Name = "${var.environment}-bank-processing-public-${count.index + 1}"
+    Environment = var.environment
   }
 }
 
@@ -40,6 +48,7 @@ resource "aws_internet_gateway" "main" {
 
   tags = {
     Name = "${var.environment}-bank-processing-igw"
+    Environment = var.environment
   }
 }
 
@@ -48,6 +57,7 @@ resource "aws_eip" "nat" {
 
   tags = {
     Name = "${var.environment}-bank-processing-nat-eip-1"
+    Environment = var.environment
   }
 }
 
@@ -55,11 +65,12 @@ resource "aws_nat_gateway" "main" {
   allocation_id = aws_eip.nat.id
   subnet_id     = aws_subnet.public[0].id
 
+  depends_on = [aws_internet_gateway.main]
+
   tags = {
     Name = "${var.environment}-bank-processing-nat-1"
+    Environment = var.environment
   }
-
-  depends_on = [aws_internet_gateway.main]
 }
 
 resource "aws_route_table" "public" {
@@ -72,6 +83,7 @@ resource "aws_route_table" "public" {
 
   tags = {
     Name = "${var.environment}-bank-processing-public-rt"
+    Environment = var.environment
   }
 }
 
@@ -86,6 +98,7 @@ resource "aws_route_table" "private" {
 
   tags = {
     Name = "${var.environment}-bank-processing-private-rt-${count.index + 1}"
+    Environment = var.environment
   }
 }
 
@@ -99,4 +112,23 @@ resource "aws_route_table_association" "private" {
   count          = 2
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private[count.index].id
+}
+
+resource "aws_security_group" "lambda" {
+  name        = "${var.environment}-lambda-sg"
+  description = "Security group for Lambda"
+  vpc_id      = aws_vpc.main.id
+
+  egress {
+    description = "Allow all outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "${var.environment}-lambda-sg"
+    Environment = var.environment
+  }
 }
