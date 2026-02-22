@@ -1,19 +1,19 @@
-resource "aws_s3_bucket" "input" {
-  bucket = "${var.environment}-bank-input-${data.aws_caller_identity.current.account_id}"
+data "aws_caller_identity" "current" {}
 
-  tags = {
-    Name = "${var.environment}-bank-input"
-  }
-
-  force_destroy = true
+locals {
+  input_bucket_name    = "${var.environment}-bank-input-${data.aws_caller_identity.current.account_id}"
+  rejected_bucket_name = "${var.environment}-bank-rejected-${data.aws_caller_identity.current.account_id}"
+  reports_bucket_name  = "${var.environment}-bank-reports-${data.aws_caller_identity.current.account_id}"
 }
 
-resource "aws_lambda_permission" "allow_s3" {
-  statement_id  = "AllowExecutionFromS3"
-  action        = "lambda:InvokeFunction"
-  function_name = var.lambda_function_arn
-  principal     = "s3.amazonaws.com"
-  source_arn    = aws_s3_bucket.input.arn
+resource "aws_s3_bucket" "input" {
+  bucket        = local.input_bucket_name
+  force_destroy = true
+
+  tags = {
+    Name        = "${var.environment}-bank-input"
+    Environment = var.environment
+  }
 }
 
 resource "aws_s3_bucket_versioning" "input" {
@@ -21,22 +21,6 @@ resource "aws_s3_bucket_versioning" "input" {
 
   versioning_configuration {
     status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_notification" "input" {
-  bucket = aws_s3_bucket.input.id
-
-  depends_on = [
-    aws_lambda_permission.allow_s3,
-    aws_s3_bucket_versioning.input
-  ]
-
-  lambda_function {
-    lambda_function_arn = var.lambda_function_arn
-    events              = ["s3:ObjectCreated:*"]
-    filter_prefix       = "input/"
-    filter_suffix       = ".csv"
   }
 }
 
@@ -59,14 +43,39 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "input" {
   }
 }
 
+resource "aws_s3_bucket_policy" "input_ssl" {
+  bucket = aws_s3_bucket.input.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "ForceSSLOnly"
+        Effect    = "Deny"
+        Principal = "*"
+        Action    = "s3:*"
+        Resource = [
+          aws_s3_bucket.input.arn,
+          "${aws_s3_bucket.input.arn}/*"
+        ]
+        Condition = {
+          Bool = {
+            "aws:SecureTransport" = "false"
+          }
+        }
+      }
+    ]
+  })
+}
+
 resource "aws_s3_bucket" "rejected" {
-  bucket = "${var.environment}-bank-rejected-${data.aws_caller_identity.current.account_id}"
+  bucket        = local.rejected_bucket_name
+  force_destroy = true
 
   tags = {
-    Name = "${var.environment}-bank-rejected"
+    Name        = "${var.environment}-bank-rejected"
+    Environment = var.environment
   }
-
-  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "rejected" {
@@ -88,14 +97,33 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "rejected" {
   }
 }
 
+resource "aws_s3_bucket_policy" "rejected_ssl" {
+  bucket = aws_s3_bucket.rejected.id
+
+  policy = aws_s3_bucket_policy.input_ssl.policy
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "rejected" {
+  bucket = aws_s3_bucket.rejected.id
+
+  rule {
+    id     = "expire-after-5-days"
+    status = "Enabled"
+
+    expiration {
+      days = 5
+    }
+  }
+}
+
 resource "aws_s3_bucket" "reports" {
-  bucket = "${var.environment}-bank-reports-${data.aws_caller_identity.current.account_id}"
+  bucket        = local.reports_bucket_name
+  force_destroy = true
 
   tags = {
-    Name = "${var.environment}-bank-reports"
+    Name        = "${var.environment}-bank-reports"
+    Environment = var.environment
   }
-
-  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "reports" {
@@ -117,4 +145,21 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "reports" {
   }
 }
 
-data "aws_caller_identity" "current" {}
+resource "aws_s3_bucket_policy" "reports_ssl" {
+  bucket = aws_s3_bucket.reports.id
+
+  policy = aws_s3_bucket_policy.input_ssl.policy
+}
+
+resource "aws_s3_bucket_lifecycle_configuration" "reports" {
+  bucket = aws_s3_bucket.reports.id
+
+  rule {
+    id     = "expire-after-5-days"
+    status = "Enabled"
+
+    expiration {
+      days = 5
+    }
+  }
+}

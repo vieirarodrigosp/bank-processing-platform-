@@ -17,6 +17,7 @@ provider "aws" {
       Project     = "bank-processing-platform"
       Environment = var.environment
       ManagedBy   = "terraform"
+      Lifecycle   = "POC"
     }
   }
 }
@@ -34,16 +35,7 @@ module "s3" {
   source = "./modules/s3"
 
   environment           = var.environment
-  lambda_function_arn   = module.lambda.function_arn
-}
-
-# MSK Module
-module "msk" {
-  source = "./modules/msk"
-
-  environment       = var.environment
-  vpc_id            = module.networking.vpc_id
-  private_subnet_ids = module.networking.private_subnet_ids
+  lambda_function_arn   = ""
 }
 
 # DynamoDB Module
@@ -65,8 +57,10 @@ module "lambda" {
   source = "./modules/lambda"
 
   environment            = var.environment
-  msk_bootstrap_servers  = module.msk.bootstrap_servers
-  s3_input_bucket_arn    = module.s3.input_bucket_arn
+  msk_bootstrap_servers  = var.msk_bootstrap_servers
+
+  s3_input_bucket_name = module.s3.input_bucket_name
+  s3_input_bucket_arn  = module.s3.input_bucket_arn
 }
 
 # EKS Module
@@ -76,7 +70,9 @@ module "eks" {
   environment         = var.environment
   vpc_id              = module.networking.vpc_id
   private_subnet_ids  = module.networking.private_subnet_ids
-  msk_cluster_arn     = module.msk.cluster_arn
+
+  msk_cluster_arn     = var.msk_cluster_arn
+
   dynamodb_table_arns = module.dynamodb.table_arns
   s3_bucket_arns      = module.s3.bucket_arns
 }

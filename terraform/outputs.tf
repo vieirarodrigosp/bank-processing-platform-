@@ -5,7 +5,7 @@ output "vpc_id" {
 
 output "msk_bootstrap_servers" {
   description = "MSK bootstrap servers"
-  value       = module.msk.bootstrap_servers
+  value       = var.msk_bootstrap_servers
 }
 
 output "s3_input_bucket" {

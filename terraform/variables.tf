@@ -1,23 +1,29 @@
 variable "aws_region" {
   description = "AWS region for resources"
   type        = string
-  default     = "us-east-1"
 }
 
 variable "aws_account_id" {
   description = "AWS account ID"
   type        = string
-  default     = "160885283918"
 }
 
 variable "environment" {
-  description = "Environment name (dev, staging, prod)"
+  description = "Environment name (poc, dev, staging, prod)"
   type        = string
-  default     = "dev"
 }
 
 variable "vpc_cidr" {
   description = "CIDR block for VPC"
   type        = string
-  default     = "10.0.0.0/16"
+}
+
+variable "msk_bootstrap_servers" {
+  description = "Existing MSK bootstrap servers"
+  type        = string
+}
+
+variable "msk_cluster_arn" {
+  description = "Existing MSK cluster ARN"
+  type        = string
 }
