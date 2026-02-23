@@ -75,8 +75,10 @@ module "eks" {
   source = "./modules/eks"
 
   environment        = var.environment
+
   vpc_id             = module.networking.vpc_id
-  private_subnet_ids = module.networking.private_subnet_ids
+  vpc_cidr           = module.networking.vpc_cidr
+  public_subnet_ids = module.networking.public_subnet_ids
 
   msk_cluster_arn = var.msk_cluster_arn
 

@@ -17,3 +17,7 @@ output "lambda_security_group_id" {
   description = "Lambda Security Group ID"
   value       = aws_security_group.lambda.id
 }
+output "vpc_cidr" {
+  description = "CIDR block for VPC"
+  value = aws_vpc.main.cidr_block
+}

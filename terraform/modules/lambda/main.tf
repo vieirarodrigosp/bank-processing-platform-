@@ -89,18 +89,15 @@ resource "aws_iam_role_policy" "lambda" {
 }
 
 resource "aws_lambda_function" "dispatcher" {
-  filename         = "${path.module}/../../../lambda-dispatcher/build/libs/lambda-dispatcher.jar"
-  function_name    = "${var.environment}-bank-processing-dispatcher"
+  function_name = "${var.environment}-bank-processing-dispatcher"
+  filename = "${path.root}/../lambda-dispatcher/target/lambda-dispatcher-*.jar"
+  source_code_hash = filebase64sha256("${path.root}/../lambda-dispatcher/target/lambda-dispatcher-0.0.1-SNAPSHOT.jar")
   role             = aws_iam_role.lambda.arn
   handler          = "com.bank.processing.dispatcher.LambdaHandler::handleRequest"
   runtime          = "java21"
   timeout          = 60
   memory_size      = 512
   publish          = true
-
-  source_code_hash = fileexists("${path.module}/../../../lambda-dispatcher/build/libs/lambda-dispatcher.jar")
-    ? filebase64sha256("${path.module}/../../../lambda-dispatcher/build/libs/lambda-dispatcher.jar")
-    : null
 
   vpc_config {
     subnet_ids         = var.private_subnet_ids

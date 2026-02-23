@@ -90,10 +90,10 @@ resource "aws_eks_cluster" "main" {
   version  = "1.28"
 
   vpc_config {
-    subnet_ids              = var.private_subnet_ids
+    subnet_ids              = var.public_subnet_ids
     security_group_ids      = [aws_security_group.eks_cluster.id]
-    endpoint_private_access = true
-    endpoint_public_access  = false
+    endpoint_public_access  = true
+    endpoint_private_access = false
   }
 
   enabled_cluster_log_types = [
@@ -107,7 +107,7 @@ resource "aws_eks_cluster" "main" {
   ]
 
   tags = {
-    Name = "${var.environment}-bank-processing-eks"
+    Name        = "${var.environment}-bank-processing-eks"
     Environment = var.environment
   }
 }
@@ -163,7 +163,7 @@ resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "${var.environment}-bank-processing-node-group"
   node_role_arn   = aws_iam_role.eks_node_group.arn
-  subnet_ids      = var.private_subnet_ids
+  subnet_ids      = var.public_subnet_ids
 
   scaling_config {
     desired_size = 1
@@ -181,7 +181,7 @@ resource "aws_eks_node_group" "main" {
   ]
 
   tags = {
-    Name = "${var.environment}-bank-processing-node-group"
+    Name        = "${var.environment}-bank-processing-node-group"
     Environment = var.environment
   }
 }
@@ -214,10 +214,8 @@ resource "aws_iam_role" "processor_service" {
         }
         Condition = {
           StringEquals = {
-            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" =
-            "system:serviceaccount:bank-processing:processor-service"
-            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" =
-            "sts.amazonaws.com"
+            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:bank-processing:processor-service"
+            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" = "sts.amazonaws.com"
           }
         }
       }
@@ -291,10 +289,8 @@ resource "aws_iam_role" "consumer_service" {
         }
         Condition = {
           StringEquals = {
-            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" =
-            "system:serviceaccount:bank-processing:consumer-service"
-            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" =
-            "sts.amazonaws.com"
+            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:sub" = "system:serviceaccount:bank-processing:consumer-service"
+            "${replace(aws_iam_openid_connect_provider.eks.url, "https://", "")}:aud" = "sts.amazonaws.com"
           }
         }
       }

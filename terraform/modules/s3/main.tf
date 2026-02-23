@@ -100,7 +100,26 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "rejected" {
 resource "aws_s3_bucket_policy" "rejected_ssl" {
   bucket = aws_s3_bucket.rejected.id
 
-  policy = aws_s3_bucket_policy.input_ssl.policy
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "ForceSSLOnly"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+
+      Resource = [
+        aws_s3_bucket.rejected.arn,
+        "${aws_s3_bucket.rejected.arn}/*"
+      ]
+
+      Condition = {
+        Bool = {
+          "aws:SecureTransport" = "false"
+        }
+      }
+    }]
+  })
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "rejected" {
@@ -109,6 +128,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "rejected" {
   rule {
     id     = "expire-after-5-days"
     status = "Enabled"
+
+    filter {
+      prefix = "rejected/"
+    }
 
     expiration {
       days = 5
@@ -148,7 +171,26 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "reports" {
 resource "aws_s3_bucket_policy" "reports_ssl" {
   bucket = aws_s3_bucket.reports.id
 
-  policy = aws_s3_bucket_policy.input_ssl.policy
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid       = "ForceSSLOnly"
+      Effect    = "Deny"
+      Principal = "*"
+      Action    = "s3:*"
+
+      Resource = [
+        aws_s3_bucket.reports.arn,
+        "${aws_s3_bucket.reports.arn}/*"
+      ]
+
+      Condition = {
+        Bool = {
+          "aws:SecureTransport" = "false"
+        }
+      }
+    }]
+  })
 }
 
 resource "aws_s3_bucket_lifecycle_configuration" "reports" {
@@ -157,6 +199,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "reports" {
   rule {
     id     = "expire-after-5-days"
     status = "Enabled"
+
+    filter {
+      prefix = "rejected/"
+    }
 
     expiration {
       days = 5
