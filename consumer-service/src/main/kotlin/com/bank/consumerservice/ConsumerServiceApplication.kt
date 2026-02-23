@@ -1,4 +1,3 @@
-
 package com.bank.consumerservice
 
 import org.springframework.boot.autoconfigure.SpringBootApplication

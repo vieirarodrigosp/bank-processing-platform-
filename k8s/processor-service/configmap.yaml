@@ -1,0 +1,33 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: processor-config
+  namespace: bank-processing
+
+data:
+  AWS_REGION: us-east-1
+
+  INPUT_BUCKET: poc-bank-processing-input
+  REJECTED_BUCKET: poc-bank-processing-rejected
+
+  PROCESSED_FILES_TABLE: poc-bank-processing-processed-files
+  PROCESSED_TRANSACTIONS_TABLE: poc-bank-processing-processed-transactions
+  TRANSACTION_SUMMARY_TABLE: poc-bank-processing-transaction-summary
+
+  KAFKA_BOOTSTRAP_SERVERS: poc-bank-processing-kafka-bootstrap
+  KAFKA_TOPIC: file.uploaded
+  KAFKA_GROUP_ID: processor-service-group
+  KAFKA_CONCURRENCY: "3"
+  KAFKA_MAX_POLL_RECORDS: "500"
+  KAFKA_RETRIES: "3"
+
+  SSM_ENABLED_FLAG: /bank/processing/enabled
+  SSM_ALLOWED_TYPES: /bank/processing/allowed-types
+  SSM_REFRESH_INTERVAL: "60"
+
+  ERROR_THRESHOLD: "15"
+  CIRCUIT_ENABLED: "true"
+
+  RETRY_MAX_ATTEMPTS: "3"
+
+  LOG_LEVEL: info

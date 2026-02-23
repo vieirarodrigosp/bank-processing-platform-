@@ -21,6 +21,8 @@ resource "aws_dynamodb_table" "processed_files" {
     enabled        = true
   }
 
+  deletion_protection_enabled = var.enable_deletion_protection
+
   tags = {
     Name = "${var.environment}-bank-processing-processed-files"
     Environment = var.environment
@@ -38,6 +40,30 @@ resource "aws_dynamodb_table" "processed_transactions" {
     type = "S"
   }
 
+  attribute {
+    name = "customerId"
+    type = "S"
+  }
+
+  attribute {
+    name = "transactionType"
+    type = "S"
+  }
+
+  # GSI PARA CONSULTA POR CLIENTE
+  global_secondary_index {
+    name            = "customerId-index"
+    hash_key        = "customerId"
+    projection_type = "ALL"
+  }
+
+  # GSI PARA CONSULTA POR TIPO
+  global_secondary_index {
+    name            = "transactionType-index"
+    hash_key        = "transactionType"
+    projection_type = "ALL"
+  }
+
   server_side_encryption {
     enabled = true
   }
@@ -50,6 +76,8 @@ resource "aws_dynamodb_table" "processed_transactions" {
     attribute_name = "ttl"
     enabled        = true
   }
+
+  deletion_protection_enabled = var.enable_deletion_protection
 
   tags = {
     Name = "${var.environment}-bank-processing-processed-transactions"
@@ -78,6 +106,13 @@ resource "aws_dynamodb_table" "transaction_summary" {
   point_in_time_recovery {
     enabled = true
   }
+
+  ttl {
+    attribute_name = "ttl"
+    enabled        = true
+  }
+
+  deletion_protection_enabled = var.enable_deletion_protection
 
   tags = {
     Name = "${var.environment}-bank-processing-transaction-summary"

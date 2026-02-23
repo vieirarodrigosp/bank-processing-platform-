@@ -1,0 +1,75 @@
+aws:
+  region: ${AWS_REGION:us-east-1}
+
+spring:
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS}
+
+    properties:
+      security.protocol: SASL_SSL
+      sasl.mechanism: AWS_MSK_IAM
+      sasl.jaas.config: software.amazon.msk.auth.iam.IAMLoginModule required;
+      sasl.client.callback.handler.class: software.amazon.msk.auth.iam.IAMClientCallbackHandler
+
+    consumer:
+      group-id: processor-service-group
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 500
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+      properties:
+        spring.json.trusted.packages: "*"
+        spring.json.value.default.type: com.bank.processor.domain.FileProcessingRequest
+        max.poll.interval.ms: 300000
+        fetch.max.bytes: 52428800
+        max.partition.fetch.bytes: 52428800
+        isolation.level: read_committed
+        session.timeout.ms: 15000
+        heartbeat.interval.ms: 5000
+
+    listener:
+      concurrency: 3
+      ack-mode: manual
+
+    producer:
+      retries: ${KAFKA_RETRIES:3}
+      acks: all
+
+      properties:
+        linger.ms: 5
+        batch.size: 32768
+        compression.type: snappy
+        max.in.flight.requests.per.connection: 5
+
+bank:
+  processing:
+    s3:
+      input-bucket: ${INPUT_BUCKET}
+      rejected-bucket: ${REJECTED_BUCKET}
+    dynamodb:
+      processed-files-table: ${PROCESSED_FILES_TABLE}
+      processed-transactions-table: ${PROCESSED_TRANSACTIONS_TABLE}
+      transaction-summary-table: ${TRANSACTION_SUMMARY_TABLE}
+    kafka:
+      topic: ${KAFKA_TOPIC:file.uploaded}
+    ssm:
+      enabled-flag: /bank/processing/enabled
+      allowed-types: /bank/processing/allowed-types
+      refresh-interval-seconds: 60
+    circuit-breaker:
+      error-threshold: ${ERROR_THRESHOLD:15}
+      enabled: ${CIRCUIT_ENABLED:true}
+    retry:
+      max-attempts: ${RETRY_MAX_ATTEMPTS:3}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+
+logging:
+  pattern:
+    console: '{"timestamp":"%d{yyyy-MM-dd HH:mm:ss}","level":"%p","thread":"%t","logger":"%c","message":"%m"}%n'
